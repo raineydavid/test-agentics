@@ -1,0 +1,53 @@
+name: Initialize README to Step 0
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  init_readme:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.head_commit.message == 'Initial commit' && !github.event.repository.is_template }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check if README already initialized
+        id: check_readme
+        run: |
+          if grep -q "Agentics Advent Calendar" README.md; then
+            echo "already_initialized=true" >> $GITHUB_OUTPUT
+          else
+            echo "already_initialized=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Personalize welcome message
+        if: steps.check_readme.outputs.already_initialized == 'false'
+        run: |
+          OWNER="$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f1)"
+          OWNER_REPO="${GITHUB_REPOSITORY}"
+          cp .github/steps/0-welcome.md 0-welcome-tmp.md
+          sed -i "s/^# 🎄 Agentics Advent Calendar/# 🎄 Welcome ${OWNER} to the Agentics Advent Calendar!/" 0-welcome-tmp.md
+
+      - name: Copy personalized step 0 to README.md
+        if: steps.check_readme.outputs.already_initialized == 'false'
+        run: cp 0-welcome-tmp.md README.md
+
+      - name: Rewrite badge links to absolute URLs
+        if: steps.check_readme.outputs.already_initialized == 'false'
+        run: |
+          OWNER_REPO="${GITHUB_REPOSITORY}"
+          sed -i 's|](/issues/new?|](https://github.com/'"${OWNER_REPO}"'/issues/new?|g' README.md
+
+      - name: Commit and push README update
+        if: steps.check_readme.outputs.already_initialized == 'false'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Initialize README with personalized welcome" || exit 0
+          git push

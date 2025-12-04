@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 🎄 Start Day 1
+    url: ../../issues/new?title=Day+1:+What+are+AI+Agents&labels=day-1&body=🚀+Starting+Day+1!
+    about: Begin your Agentics learning journey
+  - name: 🔄 Reset Progress
+    url: ../../issues/new?title=Reset+Progress&labels=reset&body=🔄+Reset+my+progress
+    about: Start over from the beginning

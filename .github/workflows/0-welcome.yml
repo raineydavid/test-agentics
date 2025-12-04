@@ -1,0 +1,200 @@
+name: Day Selection Handler
+
+on:
+  workflow_dispatch:
+  issues:
+    types: [opened, edited, labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  get_current_step:
+    name: Check current step number
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - id: get_step
+        run: |
+          echo "current_step=$(cat ./.github/steps/-step.txt)" >> $GITHUB_OUTPUT
+    outputs:
+      current_step: ${{ steps.get_step.outputs.current_step }}
+
+  on_day_selection:
+    name: Handle day selection
+    needs: get_current_step
+    if: >-
+      ${{ github.event_name == 'issues' && 
+          contains(github.event.issue.title, 'Day') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine selected day
+        id: determine_day
+        run: |
+          TITLE="${{ github.event.issue.title }}"
+          # Extract day number from title
+          DAY=$(echo "$TITLE" | grep -oP 'Day\s*\K\d+' | head -1)
+          if [ -z "$DAY" ]; then
+            DAY=0
+          fi
+          echo "day=$DAY" >> $GITHUB_OUTPUT
+          echo "to_step=$DAY" >> $GITHUB_OUTPUT
+
+      - name: Update step based on day selection
+        if: steps.determine_day.outputs.day != '0'
+        uses: skills/action-update-step@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          from_step: ${{ needs.get_current_step.outputs.current_step }}
+          to_step: ${{ steps.determine_day.outputs.to_step }}
+          
+      - name: Rewrite badge links in README.md to absolute URLs
+        run: |
+          OWNER_REPO="${GITHUB_REPOSITORY}"
+          sed -i 's|](/issues/new?|](https://github.com/'"${OWNER_REPO}"'/issues/new?|g' README.md
+          sed -i "s#github.com/${OWNER_REPO}/blob/main/issues/new?#github.com/${OWNER_REPO}/issues/new?#g" README.md
+          
+      - name: Comment on issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const day = '${{ steps.determine_day.outputs.day }}';
+            const readmeUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/README.md`;
+            let message = '';
+            if (day === '0') {
+              message = "I couldn't determine which day you selected. Please try again.";
+            } else {
+              message = `🎄 Day ${day} unlocked! The repository has been updated. Close this issue and check the [README](${readmeUrl}) for your instructions!`;
+            }
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
+            if (day !== '0') {
+              github.rest.issues.update({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'closed'
+              });
+            }
+
+  handle_completion:
+    name: Handle day completion
+    needs: get_current_step
+    if: >-
+      ${{ github.event_name == 'issues' && 
+          contains(github.event.issue.title, 'Complete Day') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine completed day
+        id: determine_completed
+        run: |
+          TITLE="${{ github.event.issue.title }}"
+          DAY=$(echo "$TITLE" | grep -oP 'Day\s*\K\d+' | head -1)
+          if [ -z "$DAY" ]; then
+            DAY=0
+          fi
+          NEXT_DAY=$((DAY + 1))
+          echo "completed_day=$DAY" >> $GITHUB_OUTPUT
+          echo "next_day=$NEXT_DAY" >> $GITHUB_OUTPUT
+
+      - name: Update to next step
+        if: steps.determine_completed.outputs.completed_day != '0'
+        uses: skills/action-update-step@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          from_step: ${{ steps.determine_completed.outputs.completed_day }}
+          to_step: ${{ steps.determine_completed.outputs.next_day }}
+
+      - name: Rewrite badge links
+        run: |
+          OWNER_REPO="${GITHUB_REPOSITORY}"
+          sed -i 's|](/issues/new?|](https://github.com/'"${OWNER_REPO}"'/issues/new?|g' README.md
+
+      - name: Comment and close issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const completedDay = '${{ steps.determine_completed.outputs.completed_day }}';
+            const nextDay = '${{ steps.determine_completed.outputs.next_day }}';
+            const readmeUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/README.md`;
+            
+            let message = '';
+            if (nextDay > 25) {
+              message = `🎉🎄 **CONGRATULATIONS!** 🎄🎉\n\nYou've completed all 25 days of the Agentics Advent Calendar!\n\nCheck the [README](${readmeUrl}) for your final project instructions!`;
+            } else {
+              message = `✅ Day ${completedDay} complete! 🎉\n\n🎄 Day ${nextDay} is now unlocked!\n\nCheck the [README](${readmeUrl}) for your next instructions!`;
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
+            github.rest.issues.update({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed'
+            });
+
+  reset_progress:
+    name: Handle reset progress
+    needs: get_current_step
+    if: >-
+      ${{ github.event_name == 'issues' && 
+          (contains(github.event.issue.title, 'Reset') || 
+           contains(join(github.event.issue.labels.*.name, ' '), 'reset')) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reset to step 0
+        uses: skills/action-update-step@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          from_step: ${{ needs.get_current_step.outputs.current_step }}
+          to_step: 0
+
+      - name: Rewrite badge links
+        run: |
+          OWNER_REPO="${GITHUB_REPOSITORY}"
+          sed -i 's|](/issues/new?|](https://github.com/'"${OWNER_REPO}"'/issues/new?|g' README.md
+
+      - name: Comment and close issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const readmeUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/README.md`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🔄 Your progress has been reset!\n\nYou can now start fresh from the [Welcome page](${readmeUrl}).`
+            });
+            github.rest.issues.update({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed'
+            });

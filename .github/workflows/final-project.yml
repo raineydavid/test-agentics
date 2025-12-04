@@ -1,0 +1,70 @@
+name: Final Project Submission
+
+on:
+  workflow_dispatch:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  handle_final_project:
+    if: |
+      contains(github.event.issue.title, 'Final Project') ||
+      contains(github.event.issue.labels.*.name, 'final-project')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Comment with congratulations
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const message = `
+            # 🎉🎄 CONGRATULATIONS! 🎄🎉
+            
+            You've completed the **25-Day Agentics Advent Calendar**!
+            
+            ## 🏆 Achievement Unlocked
+            
+            You've learned:
+            - ✅ Agent fundamentals and architecture
+            - ✅ Tool use and function calling
+            - ✅ ReAct and Chain of Thought reasoning
+            - ✅ Memory systems
+            - ✅ Planning and error handling
+            - ✅ Multi-agent systems
+            - ✅ Agent frameworks
+            - ✅ MCP (Model Context Protocol)
+            - ✅ Safety and production deployment
+            
+            ## 🌟 What's Next?
+            
+            - Share your project with the community!
+            - Keep building and experimenting with agents
+            - Contribute to open source agent projects
+            - Stay updated with the latest in AI agents
+            
+            Thank you for participating! 🙏
+            
+            **Happy Holidays and Happy Building!** 🎄🤖
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
+            
+            // Add completion label
+            github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['completed', '🎄']
+            });
